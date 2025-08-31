@@ -36,6 +36,7 @@ contract WODgachiRewards is Ownable, Pausable, ReentrancyGuard {
     event RewardAdded(string indexed rewardId, uint256 crushCost, uint256 nftMilestone);
     event RewardRedeemed(address indexed user, string indexed rewardId, bool usedNFT, uint256 nftTokenId);
     event RewardUpdated(string indexed rewardId, uint256 newCost, bool isActive);
+    event XDCPaymentReceived(address indexed user, string indexed rewardId, uint256 amount);
     
     constructor(address _crushToken, address _progressNFT) {
         crushToken = WODgachiToken(_crushToken);
@@ -93,10 +94,23 @@ contract WODgachiRewards is Ownable, Pausable, ReentrancyGuard {
         Reward storage reward = rewards[rewardId];
         require(reward.isActive, "Reward not active");
         require(reward.totalRedeemed < reward.maxRedemptions, "Reward sold out");
-        require(crushToken.balanceOf(msg.sender) >= reward.crushCost, "Insufficient CRUSH tokens");
         
-        // Transfer CRUSH tokens to contract
-        crushToken.transferFrom(msg.sender, address(this), reward.crushCost);
+        // For testnet: Allow payment with either CRUSH tokens OR native XDC
+        bool hasCRUSH = crushToken.balanceOf(msg.sender) >= reward.crushCost;
+        uint256 xdcCost = reward.crushCost / 1000; // 1000 CRUSH = 1 XDC for testing
+        bool hasXDC = msg.value >= xdcCost;
+        
+        require(hasCRUSH || hasXDC, "Insufficient CRUSH tokens or XDC");
+        
+        if (hasCRUSH && msg.value == 0) {
+            // Use CRUSH tokens
+            crushToken.transferFrom(msg.sender, address(this), reward.crushCost);
+        } else if (hasXDC) {
+            // Use XDC (for testnet convenience)
+            // XDC is automatically transferred via msg.value
+        } else {
+            revert("Payment method not available");
+        }
         
         userRedemptions[msg.sender][rewardId] = true;
         userRedemptionCount[msg.sender][rewardId]++;
@@ -214,6 +228,14 @@ contract WODgachiRewards is Ownable, Pausable, ReentrancyGuard {
         }
         
         return (rewardIds, counts);
+    }
+    
+    function getRewardCostInXDC(string memory rewardId) external view returns (uint256) {
+        return rewards[rewardId].crushCost / 1000; // 1000 CRUSH = 1 XDC for testing
+    }
+    
+    function withdrawXDC() external onlyOwner {
+        payable(owner()).transfer(address(this).balance);
     }
     
     function withdrawCRUSH(uint256 amount) external onlyOwner {
