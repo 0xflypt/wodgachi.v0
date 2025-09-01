@@ -1,5 +1,3 @@
-require("@nomicfoundation/hardhat-ethers");
-require("@nomicfoundation/hardhat-chai-matchers");
 require("dotenv").config();
 
 /** @type import('hardhat/config').HardhatUserConfig */
@@ -33,34 +31,6 @@ module.exports = {
       url: "http://127.0.0.1:8545",
       chainId: 31337,
     },
-  },
-  etherscan: {
-    apiKey: {
-      xdc: "abc", // XDC doesn't require API key for verification
-      apothem: "abc"
-    },
-    customChains: [
-      {
-        network: "xdc",
-        chainId: 50,
-        urls: {
-          apiURL: "https://explorer.xinfin.network/api",
-          browserURL: "https://explorer.xinfin.network"
-        }
-      },
-      {
-        network: "apothem",
-        chainId: 51,
-        urls: {
-          apiURL: "https://explorer.apothem.network/api",
-          browserURL: "https://explorer.apothem.network"
-        }
-      }
-    ]
-  },
-  gasReporter: {
-    enabled: process.env.REPORT_GAS !== undefined,
-    currency: "USD",
   },
   paths: {
     sources: "./contracts",
