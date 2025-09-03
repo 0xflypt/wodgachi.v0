@@ -1,16 +1,8 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.19;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/security/Pausable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "./interfaces/IFitnessOracle.sol";
-
-/**
- * @title FitnessOracle
- * @dev Oracle contract for verifying fitness data
- */
-contract FitnessOracle is IFitnessOracle, Ownable, Pausable, ReentrancyGuard {
+contract FitnessOracle {
+    address public owner;
     
     struct FitnessData {
         uint256 heartRate;
@@ -20,60 +12,35 @@ contract FitnessOracle is IFitnessOracle, Ownable, Pausable, ReentrancyGuard {
         bool verified;
     }
     
-    mapping(address => mapping(string => FitnessData)) public userFitnessData;
     mapping(address => bool) public oracleNodes;
     mapping(address => bool) public authorizedCallers;
+    mapping(bytes32 => FitnessData) public fitnessData;
     
-    address[] public activeNodes;
-    
-    event FitnessDataSubmitted(address indexed user, string workoutId, uint256 heartRate, uint256 calories, address indexed oracle);
-    event WorkoutVerified(address indexed user, string workoutId, bool verified);
+    event FitnessDataSubmitted(address indexed user, string workoutId, uint256 heartRate);
     event OracleNodeAdded(address indexed node);
-    event OracleNodeRemoved(address indexed node);
-    event CallerAuthorized(address indexed caller);
     
-    modifier onlyAuthorizedCaller() {
-        require(authorizedCallers[msg.sender] || msg.sender == owner(), "Not authorized caller");
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Not owner");
         _;
     }
     
-    modifier onlyActiveNode() {
-        require(oracleNodes[msg.sender], "Not an active oracle node");
+    modifier onlyOracle() {
+        require(oracleNodes[msg.sender], "Not oracle");
         _;
     }
     
-    constructor() Ownable(msg.sender) {}
-    
-    function authorizeCaller(address caller) external onlyOwner {
-        authorizedCallers[caller] = true;
-        emit CallerAuthorized(caller);
+    constructor() {
+        owner = msg.sender;
+        oracleNodes[msg.sender] = true;
     }
     
     function addOracleNode(address nodeAddress) external onlyOwner {
-        require(nodeAddress != address(0), "Invalid node address");
-        require(!oracleNodes[nodeAddress], "Node already active");
-        
         oracleNodes[nodeAddress] = true;
-        activeNodes.push(nodeAddress);
-        
         emit OracleNodeAdded(nodeAddress);
     }
     
-    function removeOracleNode(address nodeAddress) external onlyOwner {
-        require(oracleNodes[nodeAddress], "Node not active");
-        
-        oracleNodes[nodeAddress] = false;
-        
-        // Remove from active nodes array
-        for (uint256 i = 0; i < activeNodes.length; i++) {
-            if (activeNodes[i] == nodeAddress) {
-                activeNodes[i] = activeNodes[activeNodes.length - 1];
-                activeNodes.pop();
-                break;
-            }
-        }
-        
-        emit OracleNodeRemoved(nodeAddress);
+    function authorizeCaller(address caller) external onlyOwner {
+        authorizedCallers[caller] = true;
     }
     
     function submitFitnessData(
@@ -82,14 +49,10 @@ contract FitnessOracle is IFitnessOracle, Ownable, Pausable, ReentrancyGuard {
         uint256 heartRate,
         uint256 caloriesBurned,
         uint256 steps
-    ) external onlyActiveNode whenNotPaused {
-        require(user != address(0), "Invalid user address");
-        require(bytes(workoutId).length > 0, "Invalid workout ID");
-        require(heartRate >= 60 && heartRate <= 220, "Invalid heart rate");
-        require(caloriesBurned <= 2000, "Invalid calories burned");
-        require(steps <= 50000, "Invalid step count");
+    ) external onlyOracle {
+        bytes32 key = keccak256(abi.encodePacked(user, workoutId));
         
-        userFitnessData[user][workoutId] = FitnessData({
+        fitnessData[key] = FitnessData({
             heartRate: heartRate,
             caloriesBurned: caloriesBurned,
             steps: steps,
@@ -97,8 +60,7 @@ contract FitnessOracle is IFitnessOracle, Ownable, Pausable, ReentrancyGuard {
             verified: true
         });
         
-        emit FitnessDataSubmitted(user, workoutId, heartRate, caloriesBurned, msg.sender);
-        emit WorkoutVerified(user, workoutId, true);
+        emit FitnessDataSubmitted(user, workoutId, heartRate);
     }
     
     function verifyWorkout(
@@ -106,36 +68,18 @@ contract FitnessOracle is IFitnessOracle, Ownable, Pausable, ReentrancyGuard {
         string memory workoutId,
         uint256 duration,
         uint256 difficulty
-    ) external view override returns (bool) {
-        FitnessData storage data = userFitnessData[user][workoutId];
+    ) external view returns (bool) {
+        bytes32 key = keccak256(abi.encodePacked(user, workoutId));
+        FitnessData memory data = fitnessData[key];
         
         if (!data.verified || data.timestamp == 0) {
             return false;
         }
         
-        // Verify workout intensity matches reported difficulty
         uint256 expectedMinHeartRate = 100 + (difficulty * 20);
         uint256 expectedMinCalories = duration * difficulty * 5;
-        uint256 expectedMinSteps = duration * 50;
         
         return data.heartRate >= expectedMinHeartRate && 
-               data.caloriesBurned >= expectedMinCalories &&
-               data.steps >= expectedMinSteps;
-    }
-    
-    function getWorkoutVerificationStatus(
-        address user,
-        string memory workoutId
-    ) external view override returns (bool verified, uint256 heartRate, uint256 calories) {
-        FitnessData storage data = userFitnessData[user][workoutId];
-        return (data.verified, data.heartRate, data.caloriesBurned);
-    }
-    
-    function pause() external onlyOwner {
-        _pause();
-    }
-    
-    function unpause() external onlyOwner {
-        _unpause();
+               data.caloriesBurned >= expectedMinCalories;
     }
 }
