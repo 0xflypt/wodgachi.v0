@@ -154,7 +154,7 @@ contract WODgachiCore is Ownable, Pausable, ReentrancyGuard {
         UserProfile memory profile = userProfiles[user];
         
         // Generate metadata URI (in production, this would point to IPFS)
-        string memory tokenURIString = string(abi.encodePacked(
+        string memory metadataURI = string(abi.encodePacked(
             "https://api.wodgachi.com/metadata/",
             _toString(profile.totalWorkouts),
             "/",
@@ -169,7 +169,7 @@ contract WODgachiCore is Ownable, Pausable, ReentrancyGuard {
             crushToken.balanceOf(user),
             profile.creatureName,
             profile.creatureLevel,
-            tokenURIString
+            metadataURI
         );
     }
     

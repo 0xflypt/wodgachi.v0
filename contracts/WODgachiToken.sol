@@ -28,7 +28,7 @@ contract WODgachiToken is ERC20, Ownable, Pausable {
         _;
     }
     
-    constructor() ERC20("WODgachi CRUSH Token", "CRUSH") {
+    constructor() ERC20("WODgachi CRUSH Token", "CRUSH") Ownable(msg.sender) {
         _mint(msg.sender, 10000000 * 10**18); // Initial supply for rewards pool
     }
     
