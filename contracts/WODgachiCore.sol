@@ -153,8 +153,7 @@ contract WODgachiCore is Ownable, Pausable, ReentrancyGuard {
     function _mintProgressNFT(address user) internal {
         UserProfile memory profile = userProfiles[user];
         
-        // Generate metadata URI (in production, this would point to IPFS)
-        string memory metadataURI = string(abi.encodePacked(
+        string memory tokenURIString = string(abi.encodePacked(
             "https://api.wodgachi.com/metadata/",
             _toString(profile.totalWorkouts),
             "/",
@@ -169,7 +168,7 @@ contract WODgachiCore is Ownable, Pausable, ReentrancyGuard {
             crushToken.balanceOf(user),
             profile.creatureName,
             profile.creatureLevel,
-            metadataURI
+            tokenURIString
         );
     }
     

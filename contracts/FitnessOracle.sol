@@ -93,6 +93,19 @@ contract FitnessOracle is IFitnessOracle, Ownable, Pausable, ReentrancyGuard {
         crushToken = IERC20(_crushToken);
     }
     
+    function claimRewards() external onlyActiveNode nonReentrant {
+        require(block.timestamp >= oracleNodes[msg.sender].lastRewardClaim + REWARD_CLAIM_COOLDOWN, "Cooldown not met");
+        require(pendingRewards[msg.sender] > 0, "No rewards to claim");
+        require(address(crushToken) != address(0), "CRUSH token not set");
+        
+        uint256 reward = pendingRewards[msg.sender];
+        pendingRewards[msg.sender] = 0;
+        oracleNodes[msg.sender].lastRewardClaim = block.timestamp;
+        
+        require(crushToken.transfer(msg.sender, reward), "Transfer failed");
+        emit RewardClaimed(msg.sender, reward);
+    }
+    
     function authorizeCaller(address caller) external onlyOwner {
         authorizedCallers[caller] = true;
         emit CallerAuthorized(caller);
