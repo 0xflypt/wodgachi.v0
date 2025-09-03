@@ -122,7 +122,7 @@ contract WODgachiNFT is ERC721, ERC721URIStorage, Ownable, Pausable {
     }
     
     function getProgressMetadata(uint256 tokenId) external view returns (ProgressMetadata memory) {
-        require(_exists(tokenId), "Token does not exist");
+        require(_ownerOf(tokenId) != address(0), "Token does not exist");
         return progressMetadata[tokenId];
     }
     
