@@ -23,13 +23,13 @@ contract WODgachiToken is ERC20, Ownable, Pausable {
     event MinterAuthorized(address indexed minter);
     event MinterRevoked(address indexed minter);
     
-    constructor() ERC20("WODgachi CRUSH Token", "CRUSH") {
-        _mint(msg.sender, 10000000 * 10**18); // Initial supply for rewards pool
-    }
-    
     modifier onlyAuthorizedMinter() {
         require(authorizedMinters[msg.sender] || msg.sender == owner(), "Not authorized to mint");
         _;
+    }
+    
+    constructor() ERC20("WODgachi CRUSH Token", "CRUSH") {
+        _mint(msg.sender, 10000000 * 10**18); // Initial supply for rewards pool
     }
     
     function authorizeMinter(address minter) external onlyOwner {
