@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
@@ -20,7 +20,6 @@ contract FitnessOracle is IFitnessOracle, Ownable, Pausable, ReentrancyGuard {
         uint256 timestamp;
         bool verified;
         uint256 confirmations;
-        mapping(address => bool) confirmedBy;
     }
     
     struct OracleNode {
@@ -41,7 +40,6 @@ contract FitnessOracle is IFitnessOracle, Ownable, Pausable, ReentrancyGuard {
         uint256 timestamp;
         uint256 confirmations;
         bool finalized;
-        mapping(address => bool) submittedBy;
     }
     
     // Storage variables
@@ -49,13 +47,14 @@ contract FitnessOracle is IFitnessOracle, Ownable, Pausable, ReentrancyGuard {
     mapping(address => OracleNode) public oracleNodes;
     mapping(address => bool) public authorizedCallers;
     mapping(bytes32 => WorkoutSubmission) public workoutSubmissions;
+    mapping(bytes32 => mapping(address => bool)) public submissionConfirmedBy;
     mapping(address => uint256) public pendingRewards;
     
     address[] public activeNodes;
     bytes32[] public pendingSubmissions;
     
     // Configuration
-    uint256 public constant MIN_NODES_FOR_CONSENSUS = 3;
+    uint256 public constant MIN_NODES_FOR_CONSENSUS = 2;
     uint256 public constant VERIFICATION_REWARD = 10 * 10**18; // 10 CRUSH tokens
     uint256 public constant MIN_REPUTATION = 50;
     uint256 public constant REPUTATION_PENALTY = 10;
@@ -85,13 +84,13 @@ contract FitnessOracle is IFitnessOracle, Ownable, Pausable, ReentrancyGuard {
         _;
     }
     
-    constructor(address _crushToken) Ownable(msg.sender) {
-        crushToken = IERC20(_crushToken);
+    constructor() Ownable(msg.sender) {
+        // crushToken will be set after deployment
     }
     
     function setCrushToken(address _crushToken) external onlyOwner {
         require(_crushToken != address(0), "Invalid token address");
-        crushToken = _crushToken;
+        crushToken = IERC20(_crushToken);
     }
     
     function authorizeCaller(address caller) external onlyOwner {
@@ -146,37 +145,32 @@ contract FitnessOracle is IFitnessOracle, Ownable, Pausable, ReentrancyGuard {
         require(caloriesBurned <= 2000, "Invalid calories burned");
         require(steps <= 50000, "Invalid step count");
         
-        // Cache oracle node to avoid multiple storage reads (gas optimization)
-        OracleNode storage node = oracleNodes[msg.sender];
-        
         bytes32 submissionId = keccak256(abi.encodePacked(user, workoutId, block.timestamp));
         
         // Check if this oracle already submitted for this workout
-        require(!workoutSubmissions[submissionId].submittedBy[msg.sender], "Already submitted by this oracle");
+        require(!submissionConfirmedBy[submissionId][msg.sender], "Already submitted by this oracle");
         
         // Initialize submission if first oracle
         if (workoutSubmissions[submissionId].timestamp == 0) {
-            workoutSubmissions[submissionId].user = user;
-            workoutSubmissions[submissionId].workoutId = workoutId;
-            workoutSubmissions[submissionId].expectedHeartRate = heartRate;
-            workoutSubmissions[submissionId].expectedCalories = caloriesBurned;
-            workoutSubmissions[submissionId].expectedSteps = steps;
-            workoutSubmissions[submissionId].timestamp = block.timestamp;
+            workoutSubmissions[submissionId] = WorkoutSubmission({
+                user: user,
+                workoutId: workoutId,
+                expectedHeartRate: heartRate,
+                expectedCalories: caloriesBurned,
+                expectedSteps: steps,
+                timestamp: block.timestamp,
+                confirmations: 0,
+                finalized: false
+            });
             pendingSubmissions.push(submissionId);
-        } else {
-            // Validate submission matches previous submissions (within tolerance)
-            WorkoutSubmission storage submission = workoutSubmissions[submissionId];
-            require(_isWithinTolerance(heartRate, submission.expectedHeartRate, 10), "Heart rate mismatch");
-            require(_isWithinTolerance(caloriesBurned, submission.expectedCalories, 20), "Calories mismatch");
-            require(_isWithinTolerance(steps, submission.expectedSteps, 500), "Steps mismatch");
         }
         
         // Record submission
-        workoutSubmissions[submissionId].submittedBy[msg.sender] = true;
+        submissionConfirmedBy[submissionId][msg.sender] = true;
         workoutSubmissions[submissionId].confirmations++;
         
         // Update oracle stats
-        node.totalVerifications++;
+        oracleNodes[msg.sender].totalVerifications++;
         
         emit FitnessDataSubmitted(user, workoutId, heartRate, caloriesBurned, msg.sender);
         
@@ -193,13 +187,14 @@ contract FitnessOracle is IFitnessOracle, Ownable, Pausable, ReentrancyGuard {
         submission.finalized = true;
         
         // Store verified fitness data
-        FitnessData storage data = userFitnessData[submission.user][submission.workoutId];
-        data.heartRate = submission.expectedHeartRate;
-        data.caloriesBurned = submission.expectedCalories;
-        data.steps = submission.expectedSteps;
-        data.timestamp = submission.timestamp;
-        data.verified = true;
-        data.confirmations = submission.confirmations;
+        userFitnessData[submission.user][submission.workoutId] = FitnessData({
+            heartRate: submission.expectedHeartRate,
+            caloriesBurned: submission.expectedCalories,
+            steps: submission.expectedSteps,
+            timestamp: submission.timestamp,
+            verified: true,
+            confirmations: submission.confirmations
+        });
         
         // Distribute rewards to participating oracles
         _distributeOracleRewards(submissionId);
@@ -212,33 +207,15 @@ contract FitnessOracle is IFitnessOracle, Ownable, Pausable, ReentrancyGuard {
     }
     
     function _distributeOracleRewards(bytes32 submissionId) internal {
-        WorkoutSubmission storage submission = workoutSubmissions[submissionId];
-        
         // Reward each oracle that participated
         for (uint256 i = 0; i < activeNodes.length; i++) {
             address nodeAddress = activeNodes[i];
-            if (submission.submittedBy[nodeAddress]) {
-                OracleNode storage node = oracleNodes[nodeAddress];
-                node.successfulVerifications++;
-                node.reputation += REPUTATION_REWARD;
+            if (submissionConfirmedBy[submissionId][nodeAddress]) {
+                oracleNodes[nodeAddress].successfulVerifications++;
+                oracleNodes[nodeAddress].reputation += REPUTATION_REWARD;
                 pendingRewards[nodeAddress] += VERIFICATION_REWARD;
             }
         }
-    }
-    
-    function claimRewards() external onlyActiveNode nonReentrant {
-        OracleNode storage node = oracleNodes[msg.sender];
-        require(block.timestamp >= node.lastRewardClaim + REWARD_CLAIM_COOLDOWN, "Claim cooldown active");
-        require(pendingRewards[msg.sender] > 0, "No rewards to claim");
-        
-        uint256 rewardAmount = pendingRewards[msg.sender];
-        pendingRewards[msg.sender] = 0;
-        node.lastRewardClaim = block.timestamp;
-        
-        // Transfer CRUSH tokens as reward
-        require(crushToken.transfer(msg.sender, rewardAmount), "Reward transfer failed");
-        
-        emit RewardClaimed(msg.sender, rewardAmount);
     }
     
     function verifyWorkout(
@@ -276,126 +253,6 @@ contract FitnessOracle is IFitnessOracle, Ownable, Pausable, ReentrancyGuard {
         return (data.verified && data.confirmations >= MIN_NODES_FOR_CONSENSUS, data.heartRate, data.caloriesBurned);
     }
     
-    function requestFitnessVerification(
-        string memory workoutId,
-        uint256 expectedDuration,
-        uint256 expectedDifficulty
-    ) external onlyAuthorizedCaller whenNotPaused {
-        // Create verification request that off-chain oracles can respond to
-        bytes32 requestId = keccak256(abi.encodePacked(msg.sender, workoutId, block.timestamp));
-        
-        // In production, this would integrate with Chainlink or other oracle networks
-        // For now, emit event for off-chain oracle services to pick up
-        emit WorkoutVerified(msg.sender, workoutId, false, 0);
-    }
-    
-    function penalizeOracle(address nodeAddress, string memory reason) external onlyOwner {
-        require(oracleNodes[nodeAddress].isActive, "Node not active");
-        
-        OracleNode storage node = oracleNodes[nodeAddress];
-        if (node.reputation > REPUTATION_PENALTY) {
-            node.reputation -= REPUTATION_PENALTY;
-        } else {
-            node.reputation = 0;
-            node.isActive = false;
-            _removeFromActiveNodes(nodeAddress);
-        }
-        
-        emit ReputationUpdated(nodeAddress, node.reputation);
-    }
-    
-    function getOracleStats(address nodeAddress) external view returns (
-        bool isActive,
-        uint256 reputation,
-        uint256 totalVerifications,
-        uint256 successfulVerifications,
-        uint256 successRate,
-        uint256 pendingReward
-    ) {
-        OracleNode storage node = oracleNodes[nodeAddress];
-        uint256 rate = node.totalVerifications > 0 
-            ? (node.successfulVerifications * 100) / node.totalVerifications 
-            : 0;
-            
-        return (
-            node.isActive,
-            node.reputation,
-            node.totalVerifications,
-            node.successfulVerifications,
-            rate,
-            pendingRewards[nodeAddress]
-        );
-    }
-    
-    function getPendingSubmissions() external view returns (bytes32[] memory) {
-        return pendingSubmissions;
-    }
-    
-    function getSubmissionDetails(bytes32 submissionId) external view returns (
-        address user,
-        string memory workoutId,
-        uint256 confirmations,
-        bool finalized,
-        uint256 timestamp
-    ) {
-        WorkoutSubmission storage submission = workoutSubmissions[submissionId];
-        return (
-            submission.user,
-            submission.workoutId,
-            submission.confirmations,
-            submission.finalized,
-            submission.timestamp
-        );
-    }
-    
-    function getActiveNodesCount() external view returns (uint256) {
-        return activeNodes.length;
-    }
-    
-    function updateConsensusRequirement(uint256 newRequirement) external onlyOwner {
-        require(newRequirement > 0 && newRequirement <= activeNodes.length, "Invalid consensus requirement");
-        // Note: This would require updating the constant, which isn't possible in Solidity
-        // In production, make MIN_NODES_FOR_CONSENSUS a state variable instead of constant
-    }
-    
-    function emergencyFinalize(bytes32 submissionId, bool verified) external onlyOwner {
-        WorkoutSubmission storage submission = workoutSubmissions[submissionId];
-        require(!submission.finalized, "Already finalized");
-        require(submission.timestamp > 0, "Submission does not exist");
-        
-        submission.finalized = true;
-        
-        if (verified) {
-            // Store verified fitness data
-            FitnessData storage data = userFitnessData[submission.user][submission.workoutId];
-            data.heartRate = submission.expectedHeartRate;
-            data.caloriesBurned = submission.expectedCalories;
-            data.steps = submission.expectedSteps;
-            data.timestamp = submission.timestamp;
-            data.verified = true;
-            data.confirmations = submission.confirmations;
-        }
-        
-        emit WorkoutVerified(submission.user, submission.workoutId, verified, submission.confirmations);
-        _removePendingSubmission(submissionId);
-    }
-    
-    function _isWithinTolerance(uint256 value1, uint256 value2, uint256 tolerancePercent) internal pure returns (bool) {
-        uint256 diff = value1 > value2 ? value1 - value2 : value2 - value1;
-        uint256 tolerance = (value2 * tolerancePercent) / 100;
-        return diff <= tolerance;
-    }
-    
-    function _removeFromActiveNodes(address nodeAddress) internal {
-        for (uint256 i = 0; i < activeNodes.length; i++) {
-            if (activeNodes[i] == nodeAddress) {
-                activeNodes[i] = activeNodes[activeNodes.length - 1];
-                activeNodes.pop();
-                break;
-            }
-        }
-    }
-    
     function _removePendingSubmission(bytes32 submissionId) internal {
         for (uint256 i = 0; i < pendingSubmissions.length; i++) {
             if (pendingSubmissions[i] == submissionId) {
@@ -414,17 +271,7 @@ contract FitnessOracle is IFitnessOracle, Ownable, Pausable, ReentrancyGuard {
         _unpause();
     }
     
-    function emergencyWithdraw() external onlyOwner {
+    function withdrawXDC() external onlyOwner {
         payable(owner()).transfer(address(this).balance);
-    }
-    
-    function withdrawCrushTokens(uint256 amount) external onlyOwner {
-        require(crushToken.balanceOf(address(this)) >= amount, "Insufficient balance");
-        require(crushToken.transfer(owner(), amount), "Transfer failed");
-    }
-    
-    // Function to fund the contract with CRUSH tokens for oracle rewards
-    function fundOracleRewards(uint256 amount) external onlyOwner {
-        require(crushToken.transferFrom(msg.sender, address(this), amount), "Transfer failed");
     }
 }
