@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
@@ -23,7 +23,7 @@ contract WODgachiToken is ERC20, Ownable, Pausable {
     event MinterAuthorized(address indexed minter);
     event MinterRevoked(address indexed minter);
     
-    constructor() ERC20("WODgachi CRUSH Token", "CRUSH") Ownable(msg.sender) {
+    constructor() ERC20("WODgachi CRUSH Token", "CRUSH") {
         _mint(msg.sender, 10000000 * 10**18); // Initial supply for rewards pool
     }
     

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
@@ -45,7 +45,7 @@ contract WODgachiNFT is ERC721, ERC721URIStorage, Ownable, Pausable {
     event MinterAuthorized(address indexed minter);
     event MinterRevoked(address indexed minter);
     
-    constructor() ERC721("WODgachi Progress NFT", "WODPROG") Ownable(msg.sender) {
+    constructor() ERC721("WODgachi Progress NFT", "WODPROG") {
         _tokenIdCounter.increment(); // Start from token ID 1
     }
     
@@ -72,7 +72,7 @@ contract WODgachiNFT is ERC721, ERC721URIStorage, Ownable, Pausable {
         uint256 tokensEarned,
         string memory creatureName,
         uint256 creatureLevel,
-        string memory tokenURIString
+        string memory _tokenURI
     ) external onlyAuthorizedMinter whenNotPaused returns (uint256) {
         require(to != address(0), "Invalid recipient address");
         require(totalWorkouts >= 30, "Minimum 30 workouts required");
@@ -84,7 +84,7 @@ contract WODgachiNFT is ERC721, ERC721URIStorage, Ownable, Pausable {
         _tokenIdCounter.increment();
         
         _safeMint(to, tokenId);
-        _setTokenURI(tokenId, tokenURIString);
+        _setTokenURI(tokenId, _tokenURI);
         
         progressMetadata[tokenId] = ProgressMetadata({
             totalWorkouts: totalWorkouts,
@@ -122,7 +122,7 @@ contract WODgachiNFT is ERC721, ERC721URIStorage, Ownable, Pausable {
     }
     
     function getProgressMetadata(uint256 tokenId) external view returns (ProgressMetadata memory) {
-        require(_ownerOf(tokenId) != address(0), "Token does not exist");
+        require(_exists(tokenId), "Token does not exist");
         return progressMetadata[tokenId];
     }
     
@@ -141,15 +141,15 @@ contract WODgachiNFT is ERC721, ERC721URIStorage, Ownable, Pausable {
     }
     
     // Override required by Solidity
-    function _burn(uint256 tokenId) internal override(ERC721URIStorage) {
+    function _burn(uint256 tokenId) internal override(ERC721, ERC721URIStorage) {
         super._burn(tokenId);
     }
     
-    function tokenURI(uint256 tokenId) public view override(ERC721URIStorage) returns (string memory) {
+    function tokenURI(uint256 tokenId) public view override(ERC721, ERC721URIStorage) returns (string memory) {
         return super.tokenURI(tokenId);
     }
     
-    function supportsInterface(bytes4 interfaceId) public view override(ERC721URIStorage) returns (bool) {
+    function supportsInterface(bytes4 interfaceId) public view override(ERC721, ERC721URIStorage) returns (bool) {
         return super.supportsInterface(interfaceId);
     }
 }
