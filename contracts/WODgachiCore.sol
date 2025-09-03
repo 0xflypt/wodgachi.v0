@@ -154,29 +154,6 @@ contract WODgachiCore is Ownable, Pausable, ReentrancyGuard {
         UserProfile memory profile = userProfiles[user];
         
         // Generate metadata URI (in production, this would point to IPFS)
-        string memory tokenURI = string(abi.encodePacked(
-            "https://api.wodgachi.com/metadata/",
-            _toString(profile.totalWorkouts),
-            "/",
-            _toString(profile.level)
-        ));
-        
-        progressNFT.mintProgressNFT(
-            user,
-            profile.totalWorkouts,
-            profile.level,
-            profile.streak,
-            crushToken.balanceOf(user),
-            profile.creatureName,
-            profile.creatureLevel,
-            tokenURIString
-        );
-    }
-    
-    function _mintProgressNFT(address user) internal {
-        UserProfile memory profile = userProfiles[user];
-        
-        // Generate metadata URI (in production, this would point to IPFS)
         string memory tokenURIString = string(abi.encodePacked(
             "https://api.wodgachi.com/metadata/",
             _toString(profile.totalWorkouts),
@@ -266,6 +243,11 @@ contract WODgachiCore is Ownable, Pausable, ReentrancyGuard {
     
     function getUserProfile(address user) external view returns (UserProfile memory) {
         return userProfiles[user];
+    }
+    
+    function getUserWorkouts(address user) external view returns (Workout[] memory) {
+        return userWorkouts[user];
+    }
     
     function getActiveUsersCount() external view returns (uint256) {
         return activeUsers.length;
