@@ -33,7 +33,7 @@ contract WODgachiCore is Ownable, Pausable, ReentrancyGuard {
     struct Workout {
         string workoutId;
         uint256 duration;
-        uint256 difficulty; // 1=beginner, 2=intermediate, 3=advanced
+        uint256 difficulty;
         uint256 points;
         uint256 timestamp;
         bool verified;
@@ -168,7 +168,7 @@ contract WODgachiCore is Ownable, Pausable, ReentrancyGuard {
             crushToken.balanceOf(user),
             profile.creatureName,
             profile.creatureLevel,
-            tokenURIString
+            metadataURI
         );
     }
     
@@ -281,5 +281,17 @@ contract WODgachiCore is Ownable, Pausable, ReentrancyGuard {
             value /= 10;
         }
         return string(buffer);
+    }
+    
+    function _burn(uint256 tokenId) internal override(ERC721, ERC721URIStorage) {
+        super._burn(tokenId);
+    }
+    
+    function tokenURI(uint256 tokenId) public view override(ERC721, ERC721URIStorage) returns (string memory) {
+        return super.tokenURI(tokenId);
+    }
+    
+    function supportsInterface(bytes4 interfaceId) public view override(ERC721, ERC721URIStorage) returns (bool) {
+        return super.supportsInterface(interfaceId);
     }
 }
