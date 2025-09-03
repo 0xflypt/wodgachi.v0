@@ -38,7 +38,7 @@ contract WODgachiRewards is Ownable, Pausable, ReentrancyGuard {
     event RewardUpdated(string indexed rewardId, uint256 newCost, bool isActive);
     event XDCPaymentReceived(address indexed user, string indexed rewardId, uint256 amount);
     
-    constructor(address _crushToken, address _progressNFT) {
+    constructor(address _crushToken, address _progressNFT) Ownable(msg.sender) {
         crushToken = WODgachiToken(_crushToken);
         progressNFT = WODgachiNFT(_progressNFT);
         

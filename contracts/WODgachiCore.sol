@@ -60,7 +60,7 @@ contract WODgachiCore is Ownable, Pausable, ReentrancyGuard {
         address _crushToken,
         address _progressNFT,
         address _fitnessOracle
-    ) {
+    ) Ownable(msg.sender) {
         crushToken = WODgachiToken(_crushToken);
         progressNFT = WODgachiNFT(_progressNFT);
         fitnessOracle = IFitnessOracle(_fitnessOracle);

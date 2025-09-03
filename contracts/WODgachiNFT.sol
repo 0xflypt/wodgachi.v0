@@ -45,7 +45,7 @@ contract WODgachiNFT is ERC721, ERC721URIStorage, Ownable, Pausable {
     event MinterAuthorized(address indexed minter);
     event MinterRevoked(address indexed minter);
     
-    constructor() ERC721("WODgachi Progress NFT", "WODPROG") {
+    constructor() ERC721("WODgachi Progress NFT", "WODPROG") Ownable(msg.sender) {
         _tokenIdCounter.increment(); // Start from token ID 1
     }
     

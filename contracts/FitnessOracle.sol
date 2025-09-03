@@ -85,7 +85,7 @@ contract FitnessOracle is IFitnessOracle, Ownable, Pausable, ReentrancyGuard {
         _;
     }
     
-    constructor(address _crushToken) {
+    constructor(address _crushToken) Ownable(msg.sender) {
         crushToken = IERC20(_crushToken);
     }
     
