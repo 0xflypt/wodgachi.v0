@@ -1,246 +1,135 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.19;
 
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "./WODgachiToken.sol";
-import "./WODgachiNFT.sol";
+import "@openzeppelin/contracts/utils/Counters.sol";
 
 /**
- * @title WODgachiRewards
- * @dev Contract for managing reward redemptions with CRUSH tokens and NFTs
+ * @title WODgachiNFT
+ * @dev NFT contract for minting workout milestone achievements
  */
-contract WODgachiRewards is Ownable, Pausable, ReentrancyGuard {
-    WODgachiToken public crushToken;
-    WODgachiNFT public progressNFT;
+contract WODgachiNFT is ERC721, ERC721URIStorage, Ownable, Pausable {
+    using Counters for Counters.Counter;
     
-    struct Reward {
-        string id;
-        string title;
-        string description;
-        uint256 crushCost;
-        uint256 nftMilestoneRequired;
-        bool isActive;
-        bool nftRedeemable;
-        uint256 totalRedeemed;
-        uint256 maxRedemptions;
+    Counters.Counter private _tokenIdCounter;
+    
+    struct ProgressMetadata {
+        uint256 totalWorkouts;
+        uint256 level;
+        uint256 streak;
+        uint256 tokensEarned;
+        string creatureName;
+        uint256 creatureLevel;
+        uint256 mintedAt;
+        uint256 workoutsMilestone;
+        bool isRedeemed;
+        string redeemedFor;
     }
     
-    mapping(string => Reward) public rewards;
-    mapping(address => mapping(string => bool)) public userRedemptions;
-    mapping(address => mapping(string => uint256)) public userRedemptionCount;
+    mapping(uint256 => ProgressMetadata) public progressMetadata;
+    mapping(address => uint256[]) public userNFTs;
+    mapping(address => mapping(uint256 => bool)) public hasMintedMilestone;
+    mapping(address => bool) public authorizedMinters;
     
-    string[] public activeRewardIds;
+    event ProgressNFTMinted(
+        address indexed user, 
+        uint256 indexed tokenId, 
+        uint256 workoutsMilestone,
+        uint256 level,
+        uint256 streak
+    );
+    event NFTRedeemed(address indexed user, uint256 indexed tokenId, string rewardId);
+    event MinterAuthorized(address indexed minter);
+    event MinterRevoked(address indexed minter);
     
-    event RewardAdded(string indexed rewardId, uint256 crushCost, uint256 nftMilestone);
-    event RewardRedeemed(address indexed user, string indexed rewardId, bool usedNFT, uint256 nftTokenId);
-    event RewardUpdated(string indexed rewardId, uint256 newCost, bool isActive);
-    event XDCPaymentReceived(address indexed user, string indexed rewardId, uint256 amount);
+    constructor() ERC721("WODgachi Progress NFT", "WODPROG") {
+        _tokenIdCounter.increment(); // Start from token ID 1
+    }
     
-    constructor(address _crushToken, address _progressNFT) Ownable(msg.sender) {
-        crushToken = WODgachiToken(_crushToken);
-        progressNFT = WODgachiNFT(_progressNFT);
+    modifier onlyAuthorizedMinter() {
+        require(authorizedMinters[msg.sender] || msg.sender == owner(), "Not authorized to mint");
+        _;
+    }
+    
+    function authorizeMinter(address minter) external onlyOwner {
+        authorizedMinters[minter] = true;
+        emit MinterAuthorized(minter);
+    }
+    
+    function revokeMinter(address minter) external onlyOwner {
+        authorizedMinters[minter] = false;
+        emit MinterRevoked(minter);
+    }
+    
+    function mintProgressNFT(
+        address to,
+        uint256 totalWorkouts,
+        uint256 level,
+        uint256 streak,
+        uint256 tokensEarned,
+        string memory creatureName,
+        uint256 creatureLevel,
+        string memory _tokenURI
+    ) external onlyAuthorizedMinter whenNotPaused returns (uint256) {
+        require(to != address(0), "Invalid recipient address");
+        require(totalWorkouts >= 30, "Minimum 30 workouts required");
         
-        // Initialize default rewards
-        _addReward("premium-workout", "Premium Workout Pack", "10 exclusive advanced workouts", 500 * 10**18, 30, true, true, 1000);
-        _addReward("personal-trainer", "1-on-1 Virtual Session", "30-minute certified trainer session", 1000 * 10**18, 60, true, true, 100);
-        _addReward("nutrition-guide", "Custom Nutrition Plan", "Personalized meal plans", 750 * 10**18, 90, true, true, 500);
-        _addReward("equipment-discount", "20% Equipment Discount", "Fitness equipment discount code", 300 * 10**18, 0, false, true, 2000);
-        _addReward("streak-booster", "Streak Shield", "Protect streak for 3 days", 200 * 10**18, 0, false, true, 5000);
-        _addReward("double-points", "Double Points Weekend", "2x points for 48 hours", 400 * 10**18, 0, false, true, 1000);
-    }
-    
-    function _addReward(
-        string memory id,
-        string memory title,
-        string memory description,
-        uint256 crushCost,
-        uint256 nftMilestone,
-        bool nftRedeemable,
-        bool isActive,
-        uint256 maxRedemptions
-    ) internal {
-        rewards[id] = Reward({
-            id: id,
-            title: title,
-            description: description,
-            crushCost: crushCost,
-            nftMilestoneRequired: nftMilestone,
-            isActive: isActive,
-            nftRedeemable: nftRedeemable,
-            totalRedeemed: 0,
-            maxRedemptions: maxRedemptions
+        uint256 workoutsMilestone = (totalWorkouts / 30) * 30;
+        require(!hasMintedMilestone[to][workoutsMilestone], "Milestone already minted");
+        
+        uint256 tokenId = _tokenIdCounter.current();
+        _tokenIdCounter.increment();
+        
+        _safeMint(to, tokenId);
+        _setTokenURI(tokenId, _tokenURI);
+        
+        progressMetadata[tokenId] = ProgressMetadata({
+            totalWorkouts: totalWorkouts,
+            level: level,
+            streak: streak,
+            tokensEarned: tokensEarned,
+            creatureName: creatureName,
+            creatureLevel: creatureLevel,
+            mintedAt: block.timestamp,
+            workoutsMilestone: workoutsMilestone,
+            isRedeemed: false,
+            redeemedFor: ""
         });
         
-        activeRewardIds.push(id);
-        emit RewardAdded(id, crushCost, nftMilestone);
+        userNFTs[to].push(tokenId);
+        hasMintedMilestone[to][workoutsMilestone] = true;
+        
+        emit ProgressNFTMinted(to, tokenId, workoutsMilestone, level, streak);
+        
+        return tokenId;
     }
     
-    function addReward(
-        string memory id,
-        string memory title,
-        string memory description,
-        uint256 crushCost,
-        uint256 nftMilestone,
-        bool nftRedeemable,
-        uint256 maxRedemptions
-    ) external onlyOwner {
-        require(bytes(rewards[id].id).length == 0, "Reward already exists");
-        _addReward(id, title, description, crushCost, nftMilestone, nftRedeemable, true, maxRedemptions);
+    function redeemNFT(uint256 tokenId, string memory rewardId) external {
+        require(ownerOf(tokenId) == msg.sender, "Not the owner of this NFT");
+        require(!progressMetadata[tokenId].isRedeemed, "NFT already redeemed");
+        
+        progressMetadata[tokenId].isRedeemed = true;
+        progressMetadata[tokenId].redeemedFor = rewardId;
+        
+        emit NFTRedeemed(msg.sender, tokenId, rewardId);
     }
     
-    function redeemWithCRUSH(string memory rewardId) external whenNotPaused nonReentrant {
-        Reward storage reward = rewards[rewardId];
-        require(reward.isActive, "Reward not active");
-        require(reward.totalRedeemed < reward.maxRedemptions, "Reward sold out");
-        
-        // For testnet: Allow payment with either CRUSH tokens OR native XDC
-        bool hasCRUSH = crushToken.balanceOf(msg.sender) >= reward.crushCost;
-        uint256 xdcCost = reward.crushCost / 1000; // 1000 CRUSH = 1 XDC for testing
-        bool hasXDC = msg.value >= xdcCost;
-        
-        require(hasCRUSH || hasXDC, "Insufficient CRUSH tokens or XDC");
-        
-        if (hasCRUSH && msg.value == 0) {
-            // Use CRUSH tokens
-            crushToken.transferFrom(msg.sender, address(this), reward.crushCost);
-        } else if (hasXDC) {
-            // Use XDC (for testnet convenience)
-            // XDC is automatically transferred via msg.value
-        } else {
-            revert("Payment method not available");
-        }
-        
-        userRedemptions[msg.sender][rewardId] = true;
-        userRedemptionCount[msg.sender][rewardId]++;
-        reward.totalRedeemed++;
-        
-        emit RewardRedeemed(msg.sender, rewardId, false, 0);
+    function getUserNFTs(address user) external view returns (uint256[] memory) {
+        return userNFTs[user];
     }
     
-    function redeemWithNFT(string memory rewardId, uint256 nftTokenId) external whenNotPaused nonReentrant {
-        Reward storage reward = rewards[rewardId];
-        require(reward.isActive, "Reward not active");
-        require(reward.nftRedeemable, "Reward not redeemable with NFT");
-        require(reward.totalRedeemed < reward.maxRedemptions, "Reward sold out");
-        require(progressNFT.ownerOf(nftTokenId) == msg.sender, "Not owner of NFT");
-        
-        // Get NFT metadata to check milestone
-        WODgachiNFT.ProgressMetadata memory metadata = progressNFT.getProgressMetadata(nftTokenId);
-        require(!metadata.isRedeemed, "NFT already redeemed");
-        require(metadata.workoutsMilestone >= reward.nftMilestoneRequired, "NFT milestone insufficient");
-        
-        // Mark NFT as redeemed
-        progressNFT.redeemNFT(nftTokenId, rewardId);
-        
-        userRedemptions[msg.sender][rewardId] = true;
-        userRedemptionCount[msg.sender][rewardId]++;
-        reward.totalRedeemed++;
-        
-        emit RewardRedeemed(msg.sender, rewardId, true, nftTokenId);
+    function getProgressMetadata(uint256 tokenId) external view returns (ProgressMetadata memory) {
+        require(_ownerOf(tokenId) != address(0), "Token does not exist");
+        return progressMetadata[tokenId];
     }
     
-    function canRedeemWithNFT(address user, string memory rewardId) external view returns (bool, uint256[] memory eligibleNFTs) {
-        Reward memory reward = rewards[rewardId];
-        if (!reward.nftRedeemable || !reward.isActive) {
-            return (false, new uint256[](0));
-        }
-        
-        uint256[] memory userNFTIds = progressNFT.getUserNFTs(user);
-        uint256[] memory eligible = new uint256[](userNFTIds.length);
-        uint256 eligibleCount = 0;
-        
-        for (uint256 i = 0; i < userNFTIds.length; i++) {
-            WODgachiNFT.ProgressMetadata memory metadata = progressNFT.getProgressMetadata(userNFTIds[i]);
-            if (!metadata.isRedeemed && metadata.workoutsMilestone >= reward.nftMilestoneRequired) {
-                eligible[eligibleCount] = userNFTIds[i];
-                eligibleCount++;
-            }
-        }
-        
-        // Resize array to actual count
-        uint256[] memory result = new uint256[](eligibleCount);
-        for (uint256 i = 0; i < eligibleCount; i++) {
-            result[i] = eligible[i];
-        }
-        
-        return (eligibleCount > 0, result);
-    }
-    
-    function updateReward(
-        string memory rewardId,
-        uint256 newCrushCost,
-        uint256 newNftMilestone,
-        bool isActive
-    ) external onlyOwner {
-        require(bytes(rewards[rewardId].id).length > 0, "Reward does not exist");
-        
-        rewards[rewardId].crushCost = newCrushCost;
-        rewards[rewardId].nftMilestoneRequired = newNftMilestone;
-        rewards[rewardId].isActive = isActive;
-        
-        emit RewardUpdated(rewardId, newCrushCost, isActive);
-    }
-    
-    function getActiveRewards() external view returns (string[] memory) {
-        uint256 activeCount = 0;
-        for (uint256 i = 0; i < activeRewardIds.length; i++) {
-            if (rewards[activeRewardIds[i]].isActive) {
-                activeCount++;
-            }
-        }
-        
-        string[] memory active = new string[](activeCount);
-        uint256 index = 0;
-        for (uint256 i = 0; i < activeRewardIds.length; i++) {
-            if (rewards[activeRewardIds[i]].isActive) {
-                active[index] = activeRewardIds[i];
-                index++;
-            }
-        }
-        
-        return active;
-    }
-    
-    function getUserRedemptionHistory(address user) external view returns (
-        string[] memory rewardIds,
-        uint256[] memory counts
-    ) {
-        uint256 redeemedCount = 0;
-        for (uint256 i = 0; i < activeRewardIds.length; i++) {
-            if (userRedemptions[user][activeRewardIds[i]]) {
-                redeemedCount++;
-            }
-        }
-        
-        rewardIds = new string[](redeemedCount);
-        counts = new uint256[](redeemedCount);
-        
-        uint256 index = 0;
-        for (uint256 i = 0; i < activeRewardIds.length; i++) {
-            string memory rewardId = activeRewardIds[i];
-            if (userRedemptions[user][rewardId]) {
-                rewardIds[index] = rewardId;
-                counts[index] = userRedemptionCount[user][rewardId];
-                index++;
-            }
-        }
-        
-        return (rewardIds, counts);
-    }
-    
-    function getRewardCostInXDC(string memory rewardId) external view returns (uint256) {
-        return rewards[rewardId].crushCost / 1000; // 1000 CRUSH = 1 XDC for testing
-    }
-    
-    function withdrawXDC() external onlyOwner {
-        payable(owner()).transfer(address(this).balance);
-    }
-    
-    function withdrawCRUSH(uint256 amount) external onlyOwner {
-        require(crushToken.balanceOf(address(this)) >= amount, "Insufficient balance");
-        crushToken.transfer(owner(), amount);
+    function canMintMilestone(address user, uint256 totalWorkouts) external view returns (bool) {
+        if (totalWorkouts < 30) return false;
+        uint256 workoutsMilestone = (totalWorkouts / 30) * 30;
+        return !hasMintedMilestone[user][workoutsMilestone];
     }
     
     function pause() external onlyOwner {
@@ -249,5 +138,18 @@ contract WODgachiRewards is Ownable, Pausable, ReentrancyGuard {
     
     function unpause() external onlyOwner {
         _unpause();
+    }
+    
+    // Override required by Solidity
+    function _burn(uint256 tokenId) internal override(ERC721, ERC721URIStorage) {
+        super._burn(tokenId);
+    }
+    
+    function tokenURI(uint256 tokenId) public view override(ERC721, ERC721URIStorage) returns (string memory) {
+        return super.tokenURI(tokenId);
+    }
+    
+    function supportsInterface(bytes4 interfaceId) public view override(ERC721, ERC721URIStorage) returns (bool) {
+        return super.supportsInterface(interfaceId);
     }
 }
