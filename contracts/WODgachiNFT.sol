@@ -5,16 +5,13 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
-import "@openzeppelin/contracts/utils/Counters.sol";
 
 /**
  * @title WODgachiNFT
  * @dev NFT contract for minting workout milestone achievements
  */
 contract WODgachiNFT is ERC721, ERC721URIStorage, Ownable, Pausable {
-    using Counters for Counters.Counter;
-    
-    Counters.Counter private _tokenIdCounter;
+    uint256 private _tokenIdCounter = 1;
     
     struct ProgressMetadata {
         uint256 totalWorkouts;
@@ -45,9 +42,7 @@ contract WODgachiNFT is ERC721, ERC721URIStorage, Ownable, Pausable {
     event MinterAuthorized(address indexed minter);
     event MinterRevoked(address indexed minter);
     
-    constructor() ERC721("WODgachi Progress NFT", "WODPROG") Ownable(msg.sender) {
-        _tokenIdCounter.increment(); // Start from token ID 1
-    }
+    constructor() ERC721("WODgachi Progress NFT", "WODPROG") Ownable(msg.sender) {}
     
     modifier onlyAuthorizedMinter() {
         require(authorizedMinters[msg.sender] || msg.sender == owner(), "Not authorized to mint");
@@ -80,8 +75,8 @@ contract WODgachiNFT is ERC721, ERC721URIStorage, Ownable, Pausable {
         uint256 workoutsMilestone = (totalWorkouts / 30) * 30;
         require(!hasMintedMilestone[to][workoutsMilestone], "Milestone already minted");
         
-        uint256 tokenId = _tokenIdCounter.current();
-        _tokenIdCounter.increment();
+        uint256 tokenId = _tokenIdCounter;
+        _tokenIdCounter++;
         
         _safeMint(to, tokenId);
         _setTokenURI(tokenId, metadataURI);
@@ -140,7 +135,6 @@ contract WODgachiNFT is ERC721, ERC721URIStorage, Ownable, Pausable {
         _unpause();
     }
     
-    // Override required by Solidity
     function _burn(uint256 tokenId) internal override(ERC721, ERC721URIStorage) {
         super._burn(tokenId);
     }

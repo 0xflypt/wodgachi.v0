@@ -153,7 +153,7 @@ contract WODgachiCore is Ownable, Pausable, ReentrancyGuard {
     function _mintProgressNFT(address user) internal {
         UserProfile memory profile = userProfiles[user];
         
-        string memory tokenURIString = string(abi.encodePacked(
+        string memory metadataURI = string(abi.encodePacked(
             "https://api.wodgachi.com/metadata/",
             _toString(profile.totalWorkouts),
             "/",
