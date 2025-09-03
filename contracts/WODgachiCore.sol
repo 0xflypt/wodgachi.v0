@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
+import "./interfaces/IFitnessOracle.sol";
+
 interface IERC20 {
     function transfer(address to, uint256 amount) external returns (bool);
     function balanceOf(address account) external view returns (uint256);
@@ -22,15 +24,6 @@ interface IWODgachiNFT {
         uint256 creatureLevel,
         string memory metadataURI
     ) external returns (uint256);
-}
-
-interface IFitnessOracle {
-    function verifyWorkout(
-        address user,
-        string memory workoutId,
-        uint256 duration,
-        uint256 difficulty
-    ) external view returns (bool);
 }
 
 contract WODgachiCore {
