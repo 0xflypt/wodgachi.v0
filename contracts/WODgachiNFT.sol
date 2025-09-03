@@ -72,7 +72,7 @@ contract WODgachiNFT is ERC721, ERC721URIStorage, Ownable, Pausable {
         uint256 tokensEarned,
         string memory creatureName,
         uint256 creatureLevel,
-        string memory _tokenURI
+        string memory tokenURIString
     ) external onlyAuthorizedMinter whenNotPaused returns (uint256) {
         require(to != address(0), "Invalid recipient address");
         require(totalWorkouts >= 30, "Minimum 30 workouts required");
@@ -84,7 +84,7 @@ contract WODgachiNFT is ERC721, ERC721URIStorage, Ownable, Pausable {
         _tokenIdCounter.increment();
         
         _safeMint(to, tokenId);
-        _setTokenURI(tokenId, _tokenURI);
+        _setTokenURI(tokenId, tokenURIString);
         
         progressMetadata[tokenId] = ProgressMetadata({
             totalWorkouts: totalWorkouts,
