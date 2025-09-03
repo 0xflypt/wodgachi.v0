@@ -169,7 +169,7 @@ contract WODgachiCore is Ownable, Pausable, ReentrancyGuard {
             crushToken.balanceOf(user),
             profile.creatureName,
             profile.creatureLevel,
-            tokenURI
+            tokenURIString
         );
     }
     
