@@ -72,7 +72,7 @@ contract WODgachiNFT is ERC721, ERC721URIStorage, Ownable, Pausable {
         uint256 tokensEarned,
         string memory creatureName,
         uint256 creatureLevel,
-        string memory tokenURI
+        string memory _tokenURI
     ) external onlyAuthorizedMinter whenNotPaused returns (uint256) {
         require(to != address(0), "Invalid recipient address");
         require(totalWorkouts >= 30, "Minimum 30 workouts required");
@@ -84,7 +84,7 @@ contract WODgachiNFT is ERC721, ERC721URIStorage, Ownable, Pausable {
         _tokenIdCounter.increment();
         
         _safeMint(to, tokenId);
-        _setTokenURI(tokenId, tokenURI);
+        _setTokenURI(tokenId, _tokenURI);
         
         progressMetadata[tokenId] = ProgressMetadata({
             totalWorkouts: totalWorkouts,
@@ -122,7 +122,7 @@ contract WODgachiNFT is ERC721, ERC721URIStorage, Ownable, Pausable {
     }
     
     function getProgressMetadata(uint256 tokenId) external view returns (ProgressMetadata memory) {
-        require(_exists(tokenId), "Token does not exist");
+        require(_ownerOf(tokenId) != address(0), "Token does not exist");
         return progressMetadata[tokenId];
     }
     
