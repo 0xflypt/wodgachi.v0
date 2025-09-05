@@ -3,7 +3,7 @@ require("dotenv").config();
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
   solidity: {
-    version: "0.8.20",
+    version: "0.8.19",
     settings: {
       optimizer: {
         enabled: true,
@@ -17,7 +17,8 @@ module.exports = {
       url: "https://rpc.xinfin.network",
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
       chainId: 50,
-      gasPrice: 2500000000, // 2.5 gwei
+      gasPrice: 2500000000, // 2.5 gwei - adjust if needed
+      gas: 8000000, // Increase gas limit for complex deployments
     },
     // XDC Apothem Testnet
     apothem: {
@@ -25,6 +26,7 @@ module.exports = {
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
       chainId: 51,
       gasPrice: 2500000000, // 2.5 gwei
+      gas: 8000000,
     },
     // Local development
     localhost: {
